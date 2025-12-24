@@ -1,0 +1,5 @@
+module ChordDetector {
+    requires cplusplus
+    header "ChordDetector.h"
+    export *
+}

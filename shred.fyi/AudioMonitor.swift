@@ -12,19 +12,23 @@ final class AudioMonitor: ObservableObject, @unchecked Sendable {
     @Published var isPlaying = false
     @Published var isOverdubbing = false
     @Published var loopDuration: TimeInterval = 0
+    @Published var chordName: String = "--"
+    @Published var chordConfidence: Float = 0
     @Published var permissionStatus: String = "Unknown"
     @Published var lastError: String?
 
     private let deviceManager = AudioDeviceManager()
     private let engine = AVAudioEngine()
     private let playerNode = AVAudioPlayerNode()
-    private let bufferSize: AVAudioFrameCount = 1024
+    private let bufferSize: AVAudioFrameCount = 4096
     private let maxLoopSeconds: TimeInterval = 120
 
     private var isEngineConfigured = false
     private var inputFormat: AVAudioFormat?
     private var loopFormat: AVAudioFormat?
     private var loopBuffer: AVAudioPCMBuffer?
+    private var chordEngine: ChordDetectionEngine?
+    private let analysisQueue = DispatchQueue(label: "shred.audio.analysis")
 
     nonisolated(unsafe) private var loopSamples: [Float] = []
     nonisolated(unsafe) private var loopFrameCount = 0
@@ -34,6 +38,10 @@ final class AudioMonitor: ObservableObject, @unchecked Sendable {
     nonisolated(unsafe) private var overdubWriteIndex = 0
     nonisolated(unsafe) private var recordingActive = false
     nonisolated(unsafe) private var overdubActive = false
+    nonisolated(unsafe) private var noDetectionCount = 0
+    nonisolated(unsafe) private var lastDetectedChord = ""
+    nonisolated(unsafe) private var chordHoldCount = 0
+    nonisolated(unsafe) private var smoothedConfidence: Float = 0
 
     func refreshDevices() {
         let devices = deviceManager.inputDevices()
@@ -238,6 +246,7 @@ final class AudioMonitor: ObservableObject, @unchecked Sendable {
         let format = inputNode.outputFormat(forBus: 0)
         inputFormat = format
         loopFormat = AVAudioFormat(standardFormatWithSampleRate: format.sampleRate, channels: 1)
+        chordEngine = ChordDetectionEngine(sampleRate: format.sampleRate, frameSize: Int(bufferSize))
 
         if !isEngineConfigured {
             engine.attach(playerNode)
@@ -312,6 +321,52 @@ final class AudioMonitor: ObservableObject, @unchecked Sendable {
 
         updateOnMain { [weak self] in
             self?.level = clamped
+        }
+
+        analyzeChords(buffer: buffer)
+    }
+
+    nonisolated private func analyzeChords(buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData else { return }
+        let frameLength = Int(buffer.frameLength)
+        guard frameLength > 0 else { return }
+
+        let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameLength))
+        analysisQueue.async { [weak self] in
+            guard let self else { return }
+            guard let engine = self.chordEngine else { return }
+            if let detected = engine.analyze(samples: samples) {
+                self.noDetectionCount = 0
+                let minConfidence: Float = 0.2
+                if detected.confidence >= minConfidence {
+                    if detected.name == self.lastDetectedChord {
+                        self.chordHoldCount += 1
+                    } else {
+                        self.chordHoldCount = 0
+                        self.lastDetectedChord = detected.name
+                    }
+                    if self.chordHoldCount >= 2 {
+                        self.smoothedConfidence = self.smoothedConfidence * 0.7 + detected.confidence * 0.3
+                        let name = detected.name
+                        let confidence = self.smoothedConfidence
+                        self.updateOnMain {
+                            self.chordName = name
+                            self.chordConfidence = confidence
+                        }
+                    }
+                }
+            } else {
+                self.noDetectionCount += 1
+                if self.noDetectionCount >= 20 {
+                    self.lastDetectedChord = ""
+                    self.chordHoldCount = 0
+                    self.smoothedConfidence = 0
+                    self.updateOnMain {
+                        self.chordName = "--"
+                        self.chordConfidence = 0
+                    }
+                }
+            }
         }
     }
 

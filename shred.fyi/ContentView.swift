@@ -46,6 +46,17 @@ struct ContentView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
+                Text("Chord Detection")
+                    .font(.headline)
+
+                Text(monitor.chordName)
+                    .font(.title2)
+
+                Text(String(format: "Confidence: %.2f", monitor.chordConfidence))
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Looper")
                     .font(.headline)
 
