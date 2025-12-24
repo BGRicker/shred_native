@@ -6,12 +6,12 @@
 //
 
 import SwiftUI
-import SwiftData
 
 @main
 struct shred_fyiApp: App {
     var body: some Scene {
         WindowGroup {
+            ContentView()
         }
     }
 }
