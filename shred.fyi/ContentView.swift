@@ -34,6 +34,57 @@ struct ContentView: View {
 
                 ProgressView(value: monitor.level)
                     .progressViewStyle(.linear)
+
+                Text("Microphone access: \(monitor.permissionStatus)")
+                    .foregroundStyle(.secondary)
+
+                if let error = monitor.lastError {
+                    Text(error)
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Looper")
+                    .font(.headline)
+
+                Text(loopDurationText)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 12) {
+                    Button(monitor.isRecording ? "Stop Recording" : "Record") {
+                        if monitor.isRecording {
+                            monitor.stopRecording()
+                        } else {
+                            monitor.startRecording()
+                        }
+                    }
+                    .disabled(!monitor.isRunning || monitor.isPlaying || monitor.isOverdubbing)
+
+                    Button(monitor.isPlaying ? "Stop" : "Play") {
+                        if monitor.isPlaying {
+                            monitor.stopPlayback()
+                        } else {
+                            monitor.playLoop()
+                        }
+                    }
+                    .disabled(monitor.isRecording || monitor.loopDuration == 0)
+
+                    Button(monitor.isOverdubbing ? "Stop Overdub" : "Overdub") {
+                        if monitor.isOverdubbing {
+                            monitor.stopOverdub()
+                        } else {
+                            monitor.startOverdub()
+                        }
+                    }
+                    .disabled(monitor.isRecording || monitor.loopDuration == 0)
+
+                    Button("Clear") {
+                        monitor.clearLoop()
+                    }
+                    .disabled(monitor.isRecording)
+                }
             }
 
             HStack(spacing: 12) {
@@ -51,7 +102,7 @@ struct ContentView: View {
             }
         }
         .padding(24)
-        .frame(minWidth: 420, minHeight: 280)
+        .frame(minWidth: 520, minHeight: 360)
         .onAppear {
             monitor.refreshDevices()
             monitor.requestAccessAndStart()
@@ -63,6 +114,13 @@ struct ContentView: View {
             get: { monitor.selectedDeviceID },
             set: { monitor.selectDevice($0) }
         )
+    }
+
+    private var loopDurationText: String {
+        if monitor.loopDuration == 0 {
+            return "No loop recorded"
+        }
+        return String(format: "Loop length: %.2f s", monitor.loopDuration)
     }
 }
 

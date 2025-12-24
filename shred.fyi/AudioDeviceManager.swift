@@ -132,9 +132,10 @@ final class AudioDeviceManager {
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        var dataSize = UInt32(MemoryLayout<CFString>.size)
-        var name: CFString = "" as CFString
+        var name: Unmanaged<CFString>?
+        var dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
         let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, &name)
-        return status == noErr ? name as String : nil
+        guard status == noErr, let value = name?.takeUnretainedValue() else { return nil }
+        return value as String
     }
 }
